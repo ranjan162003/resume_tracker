@@ -68,13 +68,17 @@ flowchart TD
 
     subgraph Agent["Resume Tailoring Agent · app/resume_agent/"]
         JD["Fetch full job description<br/>if not already cached · job_detail.py"]
-        PROMPT["Build prompt<br/>claude_client.py"]
+        PROMPT["Build prompt<br/>prompting.py"]
         CLAUDE["Claude Code CLI<br/>claude -p, uses your subscription"]
+        OLLAMA["or: local model via Ollama<br/>ollama_client.py"]
         DOCX["Rewrite resume paragraphs in place<br/>docx_editor.py"]
         PDF["Convert to PDF<br/>docx2pdf, pipeline.py"]
     end
 
-    DASH -- "Tailor resume" --> JD --> PROMPT --> CLAUDE --> DOCX --> PDF --> DASH
+    DASH -- "Tailor resume" --> JD --> PROMPT
+    PROMPT --> CLAUDE --> DOCX
+    PROMPT --> OLLAMA --> DOCX
+    DOCX --> PDF --> DASH
 ```
 
 Everything runs locally, triggered manually from the dashboard — no scheduler, no
@@ -92,14 +96,16 @@ cloud hosting, no server to keep alive.
 | Config | [Pydantic](https://docs.pydantic.dev/) / pydantic-settings | Typed settings (`data/settings.json`) and secrets (`.env`) |
 | Resume editing | [python-docx](https://python-docx.readthedocs.io/) | Rewrites paragraph text in place, preserving original formatting |
 | DOCX → PDF | [docx2pdf](https://pypi.org/project/docx2pdf/) | Drives Microsoft Word in the background for a layout-accurate PDF |
-| LLM | [Claude Code CLI](https://code.claude.com/docs) (`claude -p`) | Uses your existing Claude subscription — no separate API key or billing |
+| LLM | [Claude Code CLI](https://code.claude.com/docs) (`claude -p`) or local [Ollama](https://ollama.com) | Claude: uses your existing subscription, no separate billing. Ollama: free, fully offline, selectable in Settings |
 | Tests | [pytest](https://pytest.org/) | |
 
 ## Prerequisites
 
 - **Python 3.10+**
 - **Microsoft Word** — only needed for the resume-tailoring feature's DOCX → PDF conversion (skip if you won't use that)
-- **[Claude Code](https://code.claude.com/docs)** installed and logged in (`claude` on PATH) — only needed for resume tailoring, not for job collection
+- **One LLM backend for resume tailoring** (pick one, selectable in Settings):
+  - **[Claude Code](https://code.claude.com/docs)** installed and logged in (`claude` on PATH) — uses your existing subscription
+  - **[Ollama](https://ollama.com)** installed, running, with a model pulled (e.g. `ollama pull llama3.1:8b`) — free, fully offline, lower quality
 
 ## Installation
 
@@ -154,15 +160,40 @@ invents new skills, employers, or experience.
 Requirements:
 - A `.docx` resume, set via the **"Browse for your resume"** uploader on the Settings
   page (saved locally to `data/resume/`).
-- [Claude Code](https://code.claude.com/docs) installed and logged in (`claude` on
-  PATH) -- resume tailoring calls it non-interactively (`claude -p`), which uses your
-  existing subscription's usage allowance, not a separate paid API.
 - Microsoft Word, for converting the tailored `.docx` to a layout-accurate PDF via
   [docx2pdf](https://pypi.org/project/docx2pdf/).
+- One of the two LLM backends below, selectable on the Settings page.
 
 For LinkedIn and WorkAtAStartup, whose job listings don't include a description in
 the collected data, the description is fetched from that one job's page on first
 use and cached -- not re-fetched on later clicks.
+
+### LLM backend: Claude Code vs local Ollama
+
+| | Claude Code (default) | Local model via Ollama |
+|---|---|---|
+| Setup | [Claude Code](https://code.claude.com/docs) installed and logged in (`claude` on PATH) | [Ollama](https://ollama.com) installed, running, with a model pulled (e.g. `ollama pull llama3.1:8b`) |
+| Cost | Uses your existing subscription's usage allowance (`claude -p`, non-interactive) -- no separate API key or billing | Free, fully offline |
+| Quality | Better at nuanced rewriting and following the strict JSON output format | Noticeably weaker for this kind of task, especially smaller models |
+
+Switch between them on the Settings page under "Resume-tailoring model."
+
+**Installing Ollama** (skip this if you're sticking with Claude Code, the default):
+1. Download and run the installer for your OS from https://ollama.com/download
+2. Confirm it's running:
+   ```
+   ollama --version
+   ```
+3. Pull a model (default expected by Settings is `llama3.1:8b`, ~4.7GB download):
+   ```
+   ollama pull llama3.1:8b
+   ```
+4. Ollama runs as a background service automatically after install/pull — verify it's reachable:
+   ```
+   curl http://localhost:11434
+   ```
+   (should respond, not connection-refused)
+5. In the dashboard's Settings page, switch "Resume-tailoring model" to **Local model via Ollama**. If you pulled a different model than `llama3.1:8b`, update the model name field to match.
 
 ## Tests
 ```

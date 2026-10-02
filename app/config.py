@@ -40,6 +40,8 @@ class Secrets(BaseSettings):
 
 class UserSettings(BaseModel):
     resume_path: str = ""  # local .docx path, used by the resume-tailoring agent
+    llm_backend: str = "claude"  # "claude" or "ollama", used by the resume-tailoring agent
+    ollama_model: str = "llama3.1:8b"  # only used when llm_backend == "ollama"
     keywords: list[str] = Field(default_factory=lambda: ["python developer"])
     location: str = ""
     country_code: str = "in"  # ISO country code, used by Adzuna/Jooble queries

@@ -7,9 +7,11 @@ from pathlib import Path
 from docx2pdf import convert
 
 from app.db import JobPosting, get_session
-from app.resume_agent.claude_client import build_prompt, call_claude, parse_edits
+from app.resume_agent.claude_client import call_claude
 from app.resume_agent.docx_editor import apply_edits, extract_paragraphs
 from app.resume_agent.job_detail import fetch_linkedin_description, fetch_workatastartup_description
+from app.resume_agent.ollama_client import call_ollama
+from app.resume_agent.prompting import build_prompt, parse_edits
 
 
 @dataclass
@@ -19,7 +21,9 @@ class TailorResult:
     summary: str
 
 
-def tailor_resume(job: JobPosting, resume_path: str) -> TailorResult:
+def tailor_resume(
+    job: JobPosting, resume_path: str, llm_backend: str = "claude", ollama_model: str = "llama3.1:8b"
+) -> TailorResult:
     if not resume_path:
         raise ValueError("No resume path set -- add one in Settings first.")
     if not Path(resume_path).exists():
@@ -28,7 +32,11 @@ def tailor_resume(job: JobPosting, resume_path: str) -> TailorResult:
     description = _ensure_description(job)
     paragraphs = extract_paragraphs(resume_path)
     prompt = build_prompt(paragraphs, description)
-    raw_output = call_claude(prompt)
+
+    if llm_backend == "ollama":
+        raw_output = call_ollama(prompt, ollama_model)
+    else:
+        raw_output = call_claude(prompt)
     summary, edits = parse_edits(raw_output)
 
     stem = _slugify(f"{job.id}-{job.company}-{job.title}")[:80]

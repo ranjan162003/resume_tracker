@@ -84,7 +84,9 @@ if page == "Today's Jobs":
                         if st.button("Tailor resume", key=f"tailor-btn-{job.id}"):
                             try:
                                 with st.spinner("Fetching job details and tailoring resume via Claude..."):
-                                    st.session_state[tailor_key] = tailor_resume(job, settings.resume_path)
+                                    st.session_state[tailor_key] = tailor_resume(
+                                        job, settings.resume_path, settings.llm_backend, settings.ollama_model
+                                    )
                             except Exception as e:
                                 st.error(str(e))
 
@@ -140,6 +142,29 @@ elif page == "Settings":
         saved_path.write_bytes(uploaded_resume.getvalue())
         resume_path = str(saved_path)
     st.caption(f"Current resume: {resume_path or '(none set -- browse above)'}")
+
+    backend_labels = {"claude": "Claude Code (uses your subscription)", "ollama": "Local model via Ollama"}
+    label_to_backend = {v: k for k, v in backend_labels.items()}
+    llm_backend = label_to_backend[
+        st.radio(
+            "Resume-tailoring model",
+            list(backend_labels.values()),
+            index=list(backend_labels.keys()).index(settings.llm_backend),
+        )
+    ]
+    ollama_model = settings.ollama_model
+    if llm_backend == "ollama":
+        ollama_model = st.text_input(
+            "Ollama model name",
+            settings.ollama_model,
+            help="Must already be pulled locally, e.g. `ollama pull llama3.1:8b`.",
+        )
+        st.caption(
+            "Requires Ollama (https://ollama.com) installed and running locally. "
+            "Fully offline, no subscription usage, but lower quality for this kind "
+            "of nuanced rewriting than Claude."
+        )
+
     keywords_raw = st.text_area("Keywords (one per line)", "\n".join(settings.keywords))
     location = st.text_input("Location", settings.location)
     country_code = st.text_input("Country code (for Adzuna/Jooble)", settings.country_code)
@@ -179,6 +204,8 @@ elif page == "Settings":
     if st.button("Save settings"):
         new_settings = UserSettings(
             resume_path=resume_path,
+            llm_backend=llm_backend,
+            ollama_model=ollama_model,
             keywords=[k.strip() for k in keywords_raw.splitlines() if k.strip()],
             location=location,
             country_code=country_code,

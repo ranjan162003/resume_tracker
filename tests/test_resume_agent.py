@@ -1,10 +1,12 @@
 import json
 
+import httpx
 import pytest
 from docx import Document
 
-from app.resume_agent.claude_client import build_prompt, parse_edits
 from app.resume_agent.docx_editor import apply_edits, extract_paragraphs
+from app.resume_agent.ollama_client import call_ollama
+from app.resume_agent.prompting import build_prompt, parse_edits
 
 
 @pytest.fixture
@@ -67,3 +69,40 @@ def test_parse_edits_raises_on_invalid_json():
 def test_parse_edits_raises_when_edits_missing():
     with pytest.raises(ValueError):
         parse_edits(json.dumps({"summary": "no edits key here"}))
+
+
+class _FakeResponse:
+    def __init__(self, status_code=200, json_data=None, text_data=""):
+        self.status_code = status_code
+        self._json = json_data or {}
+        self.text = text_data
+        self.headers = {"content-type": "application/json"}
+
+    def json(self):
+        return self._json
+
+
+def test_call_ollama_returns_response_text(monkeypatch):
+    monkeypatch.setattr(
+        httpx, "post", lambda *a, **k: _FakeResponse(json_data={"response": "generated text"})
+    )
+    assert call_ollama("some prompt", "llama3.1:8b") == "generated text"
+
+
+def test_call_ollama_raises_on_connect_error(monkeypatch):
+    def raise_connect_error(*a, **k):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(httpx, "post", raise_connect_error)
+    with pytest.raises(RuntimeError, match="Ollama"):
+        call_ollama("prompt", "llama3.1:8b")
+
+
+def test_call_ollama_raises_on_model_not_found(monkeypatch):
+    monkeypatch.setattr(
+        httpx,
+        "post",
+        lambda *a, **k: _FakeResponse(status_code=404, json_data={"error": "model not found"}),
+    )
+    with pytest.raises(RuntimeError, match="ollama pull"):
+        call_ollama("prompt", "missing-model")
